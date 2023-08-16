@@ -13,6 +13,8 @@ public:
 	/*
 	non case sentitive search
 	non ideal since it increases the object reference count. Other way could have been to walk the EPROCESS list but not a stable solution (no ref count in this case)
+	note: you will have to decrease the ref count with ObDereferenceObject
+	
 	*/
-	static NTSTATUS find_process(_In_ WCHAR* proc_name, _In_ ULONG proc_name_size, _Out_ PEPROCESS proc); 
+	static NTSTATUS find_process(_In_ WCHAR* proc_name, _In_ ULONG proc_name_size, _Out_ PEPROCESS* proc); 
 };

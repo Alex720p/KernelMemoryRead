@@ -5,6 +5,11 @@ void driver_unload(_In_ PDRIVER_OBJECT driver);
 NTSTATUS io_create_close(_In_ PDEVICE_OBJECT device, _In_ PIRP irp);
 NTSTATUS io_device_control(_In_ PDEVICE_OBJECT device, _In_ PIRP irp);
 
+struct globals_t {
+	PEPROCESS g_process = nullptr;
+};
+
+globals_t globals;
 
 extern "C"
 NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT driver, _In_ PUNICODE_STRING registry_path) {
@@ -38,6 +43,7 @@ void driver_unload(_In_ PDRIVER_OBJECT driver) {
 	UNICODE_STRING symbolic_name = RTL_CONSTANT_STRING(L"\\??\\reader");
 	IoDeleteSymbolicLink(&symbolic_name);
 	IoDeleteDevice(driver->DeviceObject);
+	//todo: unreference EPROCESS on each change
 }
 
 NTSTATUS io_create_close(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
@@ -50,38 +56,80 @@ NTSTATUS io_create_close(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
 }
 
 NTSTATUS io_device_control(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
+
 	UNREFERENCED_PARAMETER(device);
 
 	PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(irp);
 	NTSTATUS status = STATUS_SUCCESS;
 	switch (stack->Parameters.DeviceIoControl.IoControlCode) {
+		case IOCTL_READER_INITIALIZE:
+		{
+			irp->IoStatus.Information = 0;
+			if (stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(InitializeRequest)) {
+				status = STATUS_INVALID_BUFFER_SIZE;
+				break;
+			}
+
+			InitializeRequest* buffer = reinterpret_cast<InitializeRequest*>(irp->AssociatedIrp.SystemBuffer);
+			PEPROCESS ptr_to_peprocess = nullptr;
+			status = Memory::find_process(buffer->proc_name, buffer->proc_name_size, &ptr_to_peprocess);
+			if (!ptr_to_peprocess)
+				break;
+
+			globals.g_process = ptr_to_peprocess;
+			break;
+		}
 		case IOCTL_READER_READ_BUFFERED:
 		{
+			irp->IoStatus.Information = 0;
+			if (globals.g_process == nullptr) {
+				status = STATUS_REQUEST_ABORTED;
+				break;
+			}
+
 			if (stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(ReadRequest)) {
 				status = STATUS_INVALID_BUFFER_SIZE;
-				irp->IoStatus.Information = 0;
 				break;
 			}
 
 			ReadRequest* buffer = reinterpret_cast<ReadRequest*>(irp->AssociatedIrp.SystemBuffer);
 			if (stack->Parameters.DeviceIoControl.OutputBufferLength < buffer->size) {
 				status = STATUS_INVALID_BUFFER_SIZE;
-				irp->IoStatus.Information = 0;
 				break;
 			}
 
-			//read from app that asked
-			memcpy(buffer, (void*)buffer->address, buffer->size);
-			irp->IoStatus.Information = buffer->size;
+			PVOID kernel_buffer = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(buffer->size), DRIVER_TAG); //in kernel memory so the context swap doesn't affect us
+			if (kernel_buffer == NULL) {
+				status = STATUS_INSUFFICIENT_RESOURCES;
+				break;
+			}
+			
+			PRKAPC_STATE apc_state = reinterpret_cast<PRKAPC_STATE>(ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC_STATE), DRIVER_TAG));
+			if (apc_state == NULL) {
+				status = STATUS_REQUEST_ABORTED;
+				break;
+			}
+			
+			PVOID src = reinterpret_cast<PVOID>(buffer->address);
+			SIZE_T copy_size = buffer->size;
 
-			PEPROCESS proc = nullptr;
-			WCHAR proc_name[] = L"Notepad.exe";
-			NTSTATUS status2 = Memory::find_process(proc_name, sizeof(proc_name), proc);
-			if (NT_SUCCESS(status2))
-				KdPrint(("found :) !!"));
+			KeStackAttachProcess(globals.g_process, apc_state);
+			__try {
+				RtlCopyMemory(kernel_buffer, src, copy_size);  //in context of targeted program 
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER) {
+				KdPrint(("Reader: Error, tried to read invalid memory \n"));
+				//TODO:change to invalid status
+			}
 
+			KeUnstackDetachProcess(apc_state);
+			RtlCopyMemory(buffer, kernel_buffer, copy_size); //copy back to usermode program
+
+			ExFreePool(apc_state);
+			ExFreePool(kernel_buffer);
+
+			irp->IoStatus.Information = copy_size;
 			break;
-
 		}
 		default:
 			status = STATUS_INVALID_DEVICE_REQUEST;
