@@ -97,12 +97,6 @@ NTSTATUS io_device_control(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
 				status = STATUS_INVALID_BUFFER_SIZE;
 				break;
 			}
-
-			PVOID kernel_buffer = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(buffer->size), DRIVER_TAG); //in kernel memory so the context swap doesn't affect us
-			if (kernel_buffer == NULL) {
-				status = STATUS_INSUFFICIENT_RESOURCES;
-				break;
-			}
 			
 			PRKAPC_STATE apc_state = reinterpret_cast<PRKAPC_STATE>(ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC_STATE), DRIVER_TAG));
 			if (apc_state == NULL) {
@@ -110,23 +104,19 @@ NTSTATUS io_device_control(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
 				break;
 			}
 			
-			PVOID src = reinterpret_cast<PVOID>(buffer->address);
 			SIZE_T copy_size = buffer->size;
 
 			KeStackAttachProcess(globals.g_process, apc_state);
 			__try {
-				RtlCopyMemory(kernel_buffer, src, copy_size);  //in context of targeted program 
+				RtlMoveMemory(buffer, reinterpret_cast<void*>(buffer->address), copy_size);  //in context of targeted program 
 			}
 			__except(EXCEPTION_EXECUTE_HANDLER) {
 				KdPrint(("Reader: Error, tried to read invalid memory \n"));
-				//TODO:change to invalid status
+				//TODO: change to invalid status
 			}
 
 			KeUnstackDetachProcess(apc_state);
-			RtlCopyMemory(buffer, kernel_buffer, copy_size); //copy back to usermode program
-
 			ExFreePool(apc_state);
-			ExFreePool(kernel_buffer);
 
 			irp->IoStatus.Information = copy_size;
 			break;
