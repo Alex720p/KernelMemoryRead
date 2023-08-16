@@ -109,16 +109,17 @@ NTSTATUS io_device_control(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
 			KeStackAttachProcess(globals.g_process, apc_state);
 			__try {
 				RtlMoveMemory(buffer, reinterpret_cast<void*>(buffer->address), copy_size);  //in context of targeted program 
+				irp->IoStatus.Information = copy_size;
 			}
 			__except(EXCEPTION_EXECUTE_HANDLER) {
 				KdPrint(("Reader: Error, tried to read invalid memory \n"));
-				//TODO: change to invalid status
+				status = STATUS_INVALID_PARAMETER_1;
+				irp->IoStatus.Information = 0;
 			}
 
 			KeUnstackDetachProcess(apc_state);
 			ExFreePool(apc_state);
 
-			irp->IoStatus.Information = copy_size;
 			break;
 		}
 		default:
