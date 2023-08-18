@@ -66,7 +66,18 @@ NTSTATUS io_device_control(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
 			}
 
 			InitializeRequest* buffer = reinterpret_cast<InitializeRequest*>(irp->AssociatedIrp.SystemBuffer);
-			status = g_memory.get_process_context(buffer->proc_name, buffer->proc_name_size);
+			status = g_memory.process_context_attach(buffer->proc_name, buffer->proc_name_size);
+
+			SIZE_T max_phys_addr = 0;
+			int cpu_info[4];
+			__cpuid(cpu_info, CPUID_ID_HIGHEST_EXTENDED_FUNCTION_IMPLEMENTED);
+			if (cpu_info[0] < CPUID_ID_MAXPHYSADDR)
+				cpu_info[0] = 36; //saw in multiple places this was the value to assume in the case we can't query MAXPHYADDR (not entirely sure of validity though)
+			else 
+				__cpuid(cpu_info, CPUID_ID_MAXPHYSADDR);
+
+			max_phys_addr = cpu_info[0] & MAKE_BINARY_MASK(8);
+
 			break;
 		}
 		case IOCTL_READER_READ_BUFFERED:
