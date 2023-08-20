@@ -8,13 +8,53 @@
 
 
 #define DRIVER_TAG 'redr'
-#define MAKE_BINARY_MASK(length) ((1L << (length + 1)) - 1)
+#define MAKE_BINARY_MASK(length) ((1LL << (length + 1)) - 1)
 
+//functions ID for cpuid calls
 #define CPUID_ID_HIGHEST_EXTENDED_FUNCTION_IMPLEMENTED 0x80000000
 #define CPUID_ID_MAXPHYSADDR 0x80000008
+#define MAX_PHYS_ADDR_LENGTH 8
 
+//'physical' addresses lengths
+#define PHYSICAL_INFO_START 12
+#define IS_PRESENT(field) (field & 1L)
+#define IS_1GB_PAGE(field) ((field >> 7) & 1)
+#define IS_2MB_PAGE(field) ((field >> 7) & 1) //same for 1GB and 2MB, i'm declaring both for code readability
+
+#define PHYSICAL_PAGE_TABLE_ADDRESS_START 12
+#define PHYSICAL_PAGE_TABLE_ADDRESS_LENGTH(max_phys_addr) (max_phys_addr - PHYSICAL_4KB_ADDRESS_START)
+
+#define PHYSICAL_1GB_ADDRESS_START 30
+#define PHYSICAL_1GB_ADDRESS_LENGTH(max_phys_addr) (max_phys_addr - PHYSICAL_1GB_ADDRESS_START)
+
+#define PHYSICAL_2MB_ADDRESS_START 22
+#define PHYSICAL_2MB_ADDRESS_LENGTH(max_phys_addr) (max_phys_addr - PHYSICAL_2MB_ADDRESS_START)
+
+#define PHYSICAL_4KB_ADDRESS_START 12
+#define PHYSICAL_4KB_ADDRESS_LENGTH(max_phys_addr) (max_phys_addr - PHYSICAL_4KB_ADDRESS_START)
+
+
+//Linear (virtual) addresses offsets and lengths
+#define LINEAR_ADDRESS_PLM4_START 39	
+#define LINEAR_ADDRESS_PML4_LENGTH 9
+
+#define LINEAR_ADDRESS_DIRECTORY_START 30	
+#define LINEAR_ADDRESS_DIRECTORY_LENGTH 9
+
+#define LINEAR_ADDRESS_PAGE_DIRECTORY_START 21	
+#define LINEAR_ADDRESS_PAGE_DIRECTORY_LENGTH 9
+
+#define LINEAR_ADDRESS_PAGE_TABLE_START 12	
+#define LINEAR_ADDRESS_PAGE_TABLE_LENGTH 9
+
+#define LINEAR_ADDRESS_1GB_PAGE_OFFSET_LENGTH 30 //all 3 starts at 0 so no need to gave a START define
+#define LINEAR_ADDRESS_2MB_PAGE_OFFSET_LENGTH 21
+#define LINEAR_ADDRESS_4KB_PAGE_OFFSET_LENGTH 12 
+
+#define LINEAR_ADDRESS_OFFSET_SIZE 8
+
+//PEPROCESS offsets
 #define DIRECTORY_TABLE_BASE_OFFSET 0x28 //win 22H2
-#define GET_PLM4
 typedef NTSTATUS(*ZwQuerySystemInformationPrototype) (_In_ undocumented::SYSTEM_INFORMATION_CLASS, _Inout_ PVOID, _In_ ULONG, _Out_opt_ PULONG);
 
 //TODO: add a function to check for windows version
@@ -52,6 +92,6 @@ public:
 	  buffer has to be in non paged memory
 	*/
 	//
-	// NTSTATUS read_memory_2(_In_ DWORD64 virutal_addr, _In_ SIZE_T size, _Out_ PVOID buffer, _Out_ SIZE_T* bytes_read);
+	NTSTATUS read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T size, _Out_ PVOID buffer, _Out_ SIZE_T* bytes_read);
 
 };

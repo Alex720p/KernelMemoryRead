@@ -2,7 +2,7 @@
 
 #pragma warning(push)
 #pragma warning(disable: 6001)
-NTSTATUS Memory::read_physical_memory(_In_ DWORD64 physical_addr, _In_ SIZE_T read_size, _Out_ PVOID buffer, _Out_ SIZE_T* bytes_read) {
+NTSTATUS Memory::read_physical_memory(_In_ DWORD64 physical_addr, _In_ SIZE_T read_size, _Out_ PVOID buffer, _Out_ PSIZE_T bytes_read) {
 	if (!buffer)
 		return STATUS_INVALID_PARAMETER;
 
@@ -66,7 +66,7 @@ NTSTATUS Memory::process_context_attach(_In_ WCHAR* proc_name, _In_ ULONG proc_n
 		return STATUS_NOT_FOUND;
 }
 
-NTSTATUS Memory::read_memory(_In_ DWORD64 addr, _In_ SIZE_T size, _Out_ PVOID buffer, _In_ SIZE_T buffer_size, _Out_ SIZE_T* bytes_read) {
+NTSTATUS Memory::read_memory(_In_ DWORD64 addr, _In_ SIZE_T size, _Out_ PVOID buffer, _In_ SIZE_T buffer_size, _Out_ PSIZE_T bytes_read) {
 	if (!this->process)
 		return STATUS_REQUEST_ABORTED;
 	
@@ -101,31 +101,85 @@ NTSTATUS Memory::read_memory(_In_ DWORD64 addr, _In_ SIZE_T size, _Out_ PVOID bu
 	return status;
 }
 
-/*
-NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size, _Out_ PVOID buffer, _Out_ SIZE_T* bytes_read) {
+NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size, _Out_ PVOID buffer, _Out_ PSIZE_T bytes_read) {
 	if (!this->process)
 		return STATUS_REQUEST_ABORTED;
 
 	if (!read_size || !buffer || !bytes_read)
 		return STATUS_INVALID_PARAMETER;
 
-	//getting the cr3
-	DWORD64 cr3 = *reinterpret_cast<DWORD64*>(reinterpret_cast<DWORD64>(this->process) + DIRECTORY_TABLE_BASE_OFFSET);
-	if (!cr3)
-		return STATUS_REQUEST_ABORTED;
 
-	//get the MAXPHYSADDR value
+	DWORD64 cr3 = *reinterpret_cast<DWORD64*>(reinterpret_cast<DWORD64>(this->process) + DIRECTORY_TABLE_BASE_OFFSET);
+
 	SIZE_T max_phys_addr = 0;
 	int cpu_info[4];
-	__cpuid(cpu_info, CPUID_ID_HIGHEST_EXTENDED_FUNCTION_IMPLEMENTED);
+	__cpuid(cpu_info, CPUID_ID_HIGHEST_EXTENDED_FUNCTION_IMPLEMENTED);	
 	if (cpu_info[0] < CPUID_ID_MAXPHYSADDR)
 		cpu_info[0] = 36; //saw in multiple places this was the value to assume in the case we can't query MAXPHYADDR (not entirely sure of validity though)
-	else 
+	else
 		__cpuid(cpu_info, CPUID_ID_MAXPHYSADDR);
 
-	max_phys_addr = cpu_info[0] & MAKE_BINARY_MASK(8);
+	max_phys_addr = cpu_info[0] & MAKE_BINARY_MASK(MAX_PHYS_ADDR_LENGTH);
 
-	return STATUS_SUCCESS;
-}*/
+
+	//address translation
+	DWORD64 pml4_table_addr = (cr3 & MAKE_BINARY_MASK(max_phys_addr)) >> PHYSICAL_INFO_START;
+	DWORD64 pml4_offset = (virtual_addr >> LINEAR_ADDRESS_PLM4_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PML4_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+
+	DWORD64 directory_field;
+	SIZE_T read;
+	NTSTATUS status = this->read_physical_memory(pml4_table_addr + pml4_offset, sizeof(DWORD64), &directory_field, &read);
+	if (!NT_SUCCESS(status))
+		return status;
+
+	if (!IS_PRESENT(directory_field))
+		return STATUS_REQUEST_ABORTED;
+
+	DWORD64 directory_addr = (directory_field >> PHYSICAL_INFO_START) & MAKE_BINARY_MASK(max_phys_addr - 12);
+	DWORD64 directory_offset = (virtual_addr >> LINEAR_ADDRESS_DIRECTORY_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_DIRECTORY_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	DWORD64 page_directory_field;
+	status = this->read_physical_memory(directory_addr + directory_offset, sizeof(DWORD64), &page_directory_field, &read);
+	if (!NT_SUCCESS(status))
+		return status;
+
+	if (!IS_PRESENT(page_directory_field))
+		return STATUS_REQUEST_ABORTED;
+
+	if (IS_1GB_PAGE(page_directory_field)) {
+		DWORD64 page = (page_directory_field >> PHYSICAL_1GB_ADDRESS_START) & MAKE_BINARY_MASK(PHYSICAL_1GB_ADDRESS_LENGTH(max_phys_addr));
+		DWORD64 page_offset = virtual_addr & MAKE_BINARY_MASK(LINEAR_ADDRESS_1GB_PAGE_OFFSET_LENGTH);
+		return this->read_physical_memory(page + page_offset, read_size, buffer, bytes_read);
+	}
+
+	DWORD64 page_directory_addr = (page_directory_field >> PHYSICAL_INFO_START) & MAKE_BINARY_MASK(max_phys_addr - 12);
+	DWORD64 page_directory_offset = (virtual_addr >> LINEAR_ADDRESS_PAGE_DIRECTORY_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PAGE_DIRECTORY_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	DWORD64 page_table_field;
+	status = this->read_physical_memory(page_directory_addr + page_directory_offset, sizeof(DWORD64), &page_table_field, &read);
+	if (!NT_SUCCESS(status))
+		return status;
+
+	if (!IS_PRESENT(page_table_field))
+		return STATUS_REQUEST_ABORTED;
+
+	if (IS_2MB_PAGE(page_table_field)) {
+		DWORD64 page = (page_table_field >> PHYSICAL_2MB_ADDRESS_START) & MAKE_BINARY_MASK(PHYSICAL_2MB_ADDRESS_LENGTH(max_phys_addr));
+		DWORD64 page_offset = virtual_addr & MAKE_BINARY_MASK(LINEAR_ADDRESS_2MB_PAGE_OFFSET_LENGTH);
+		return this->read_physical_memory(page + page_offset, read_size, buffer, bytes_read);
+	}
+
+	DWORD64 page_table_addr = (page_table_field >> PHYSICAL_PAGE_TABLE_ADDRESS_START) & MAKE_BINARY_MASK(PHYSICAL_PAGE_TABLE_ADDRESS_LENGTH(max_phys_addr));
+	DWORD64 page_table_offset = (virtual_addr >> LINEAR_ADDRESS_PAGE_TABLE_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PAGE_TABLE_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	DWORD64 page;
+	status = this->read_physical_memory(page_table_addr + page_table_offset, sizeof(DWORD64), &page, &read);
+	if (!NT_SUCCESS(status))
+		return status;
+
+	if (!IS_PRESENT(page))
+		return STATUS_REQUEST_ABORTED;
+
+	page = (page >> PHYSICAL_4KB_ADDRESS_START) & MAKE_BINARY_MASK(PHYSICAL_4KB_ADDRESS_LENGTH(max_phys_addr));
+	DWORD64 page_offset = virtual_addr  & MAKE_BINARY_MASK(LINEAR_ADDRESS_4KB_PAGE_OFFSET_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	return this->read_physical_memory(page + page_offset, read_size, buffer, bytes_read);
+} //todo: debug this :)))))
 
 
