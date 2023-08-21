@@ -6,9 +6,9 @@
 #include "undocumented.hpp"
 
 
-
+#pragma warning (disable: 4554) //false positive
 #define DRIVER_TAG 'redr'
-#define MAKE_BINARY_MASK(length) ((1LL << (length + 1)) - 1)
+#define MAKE_BINARY_MASK(length) ((1LL << length) - 1)
 
 //functions ID for cpuid calls
 #define CPUID_ID_HIGHEST_EXTENDED_FUNCTION_IMPLEMENTED 0x80000000

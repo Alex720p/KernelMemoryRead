@@ -123,8 +123,8 @@ NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size,
 
 
 	//address translation
-	DWORD64 pml4_table_addr = (cr3 & MAKE_BINARY_MASK(max_phys_addr)) >> PHYSICAL_INFO_START;
-	DWORD64 pml4_offset = (virtual_addr >> LINEAR_ADDRESS_PLM4_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PML4_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	DWORD64 pml4_table_addr = cr3 & (MAKE_BINARY_MASK(max_phys_addr - PHYSICAL_INFO_START) << PHYSICAL_INFO_START);
+	DWORD64 pml4_offset = ((virtual_addr >> LINEAR_ADDRESS_PLM4_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PML4_LENGTH)) * LINEAR_ADDRESS_OFFSET_SIZE;
 
 	DWORD64 directory_field;
 	SIZE_T read;
@@ -135,8 +135,8 @@ NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size,
 	if (!IS_PRESENT(directory_field))
 		return STATUS_REQUEST_ABORTED;
 
-	DWORD64 directory_addr = (directory_field >> PHYSICAL_INFO_START) & MAKE_BINARY_MASK(max_phys_addr - 12);
-	DWORD64 directory_offset = (virtual_addr >> LINEAR_ADDRESS_DIRECTORY_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_DIRECTORY_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	DWORD64 directory_addr = directory_field & (MAKE_BINARY_MASK(max_phys_addr - PHYSICAL_INFO_START) << PHYSICAL_INFO_START);
+	DWORD64 directory_offset = ((virtual_addr >> LINEAR_ADDRESS_DIRECTORY_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_DIRECTORY_LENGTH)) * LINEAR_ADDRESS_OFFSET_SIZE;
 	DWORD64 page_directory_field;
 	status = this->read_physical_memory(directory_addr + directory_offset, sizeof(DWORD64), &page_directory_field, &read);
 	if (!NT_SUCCESS(status))
@@ -146,13 +146,13 @@ NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size,
 		return STATUS_REQUEST_ABORTED;
 
 	if (IS_1GB_PAGE(page_directory_field)) {
-		DWORD64 page = (page_directory_field >> PHYSICAL_1GB_ADDRESS_START) & MAKE_BINARY_MASK(PHYSICAL_1GB_ADDRESS_LENGTH(max_phys_addr));
+		DWORD64 page = page_directory_field & (MAKE_BINARY_MASK(PHYSICAL_1GB_ADDRESS_LENGTH(max_phys_addr)) << PHYSICAL_1GB_ADDRESS_START);
 		DWORD64 page_offset = virtual_addr & MAKE_BINARY_MASK(LINEAR_ADDRESS_1GB_PAGE_OFFSET_LENGTH);
 		return this->read_physical_memory(page + page_offset, read_size, buffer, bytes_read);
 	}
 
-	DWORD64 page_directory_addr = (page_directory_field >> PHYSICAL_INFO_START) & MAKE_BINARY_MASK(max_phys_addr - 12);
-	DWORD64 page_directory_offset = (virtual_addr >> LINEAR_ADDRESS_PAGE_DIRECTORY_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PAGE_DIRECTORY_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	DWORD64 page_directory_addr = page_directory_field & (MAKE_BINARY_MASK(max_phys_addr - PHYSICAL_INFO_START) << PHYSICAL_INFO_START);
+	DWORD64 page_directory_offset = ((virtual_addr >> LINEAR_ADDRESS_PAGE_DIRECTORY_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PAGE_DIRECTORY_LENGTH)) * LINEAR_ADDRESS_OFFSET_SIZE;
 	DWORD64 page_table_field;
 	status = this->read_physical_memory(page_directory_addr + page_directory_offset, sizeof(DWORD64), &page_table_field, &read);
 	if (!NT_SUCCESS(status))
@@ -162,13 +162,13 @@ NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size,
 		return STATUS_REQUEST_ABORTED;
 
 	if (IS_2MB_PAGE(page_table_field)) {
-		DWORD64 page = (page_table_field >> PHYSICAL_2MB_ADDRESS_START) & MAKE_BINARY_MASK(PHYSICAL_2MB_ADDRESS_LENGTH(max_phys_addr));
+		DWORD64 page = page_table_field & (MAKE_BINARY_MASK(PHYSICAL_2MB_ADDRESS_LENGTH(max_phys_addr)) << PHYSICAL_2MB_ADDRESS_START);
 		DWORD64 page_offset = virtual_addr & MAKE_BINARY_MASK(LINEAR_ADDRESS_2MB_PAGE_OFFSET_LENGTH);
 		return this->read_physical_memory(page + page_offset, read_size, buffer, bytes_read);
 	}
 
-	DWORD64 page_table_addr = (page_table_field >> PHYSICAL_PAGE_TABLE_ADDRESS_START) & MAKE_BINARY_MASK(PHYSICAL_PAGE_TABLE_ADDRESS_LENGTH(max_phys_addr));
-	DWORD64 page_table_offset = (virtual_addr >> LINEAR_ADDRESS_PAGE_TABLE_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PAGE_TABLE_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	DWORD64 page_table_addr = page_table_field & (MAKE_BINARY_MASK(PHYSICAL_PAGE_TABLE_ADDRESS_LENGTH(max_phys_addr)) << PHYSICAL_PAGE_TABLE_ADDRESS_START);
+	DWORD64 page_table_offset = ((virtual_addr >> LINEAR_ADDRESS_PAGE_TABLE_START) & MAKE_BINARY_MASK(LINEAR_ADDRESS_PAGE_TABLE_LENGTH)) * LINEAR_ADDRESS_OFFSET_SIZE;
 	DWORD64 page;
 	status = this->read_physical_memory(page_table_addr + page_table_offset, sizeof(DWORD64), &page, &read);
 	if (!NT_SUCCESS(status))
@@ -177,8 +177,8 @@ NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size,
 	if (!IS_PRESENT(page))
 		return STATUS_REQUEST_ABORTED;
 
-	page = (page >> PHYSICAL_4KB_ADDRESS_START) & MAKE_BINARY_MASK(PHYSICAL_4KB_ADDRESS_LENGTH(max_phys_addr));
-	DWORD64 page_offset = virtual_addr  & MAKE_BINARY_MASK(LINEAR_ADDRESS_4KB_PAGE_OFFSET_LENGTH) * LINEAR_ADDRESS_OFFSET_SIZE;
+	page = page & (MAKE_BINARY_MASK(PHYSICAL_4KB_ADDRESS_LENGTH(max_phys_addr)) << PHYSICAL_4KB_ADDRESS_START);
+	DWORD64 page_offset = (virtual_addr  & MAKE_BINARY_MASK(LINEAR_ADDRESS_4KB_PAGE_OFFSET_LENGTH));
 	return this->read_physical_memory(page + page_offset, read_size, buffer, bytes_read);
 } //todo: debug this :)))))
 

@@ -78,9 +78,10 @@ NTSTATUS io_device_control(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
 			}
 
 			ReadRequest* buffer = reinterpret_cast<ReadRequest*>(irp->AssociatedIrp.SystemBuffer);
-			SIZE_T out_buffer_size = stack->Parameters.DeviceIoControl.OutputBufferLength;
+			//SIZE_T out_buffer_size = stack->Parameters.DeviceIoControl.OutputBufferLength;
 			SIZE_T bytes_read;
-			status = g_memory.read_memory(buffer->address, buffer->size, buffer, out_buffer_size, &bytes_read);
+			//status = g_memory.read_memory(buffer->address, buffer->size, buffer, out_buffer_size, &bytes_read);
+			status = g_memory.read_memory_2(buffer->address, buffer->size, buffer, &bytes_read);
 			irp->IoStatus.Information = bytes_read;
 
 			break;
