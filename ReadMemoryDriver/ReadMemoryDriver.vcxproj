@@ -119,11 +119,13 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="communication.cpp" />
     <ClCompile Include="driver.cpp" />
     <ClCompile Include="memory.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.hpp" />
+    <ClInclude Include="communication.hpp" />
     <ClInclude Include="documented.hpp" />
     <ClInclude Include="memory.hpp" />
     <ClInclude Include="undocumented.hpp" />
