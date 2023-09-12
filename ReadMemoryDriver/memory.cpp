@@ -322,6 +322,9 @@ NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ unsigned int search_si
 		return STATUS_INSUFFICIENT_RESOURCES;
 
 	undocumented::PMMVAD_SHORT root = reinterpret_cast<undocumented::PMMVAD_SHORT>(reinterpret_cast<DWORD64>(this->process) + VADROOT_OFFSET);
+	
 	NTSTATUS status = this->pattern_scan(root, start, search_size, sig, mask, offset, sig_length, buffer, result);
+
+	ExFreePool(buffer);
 	return status;
 }
