@@ -31,6 +31,9 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT driver, _In_ PUNICODE_STRING registry_p
 	driver->MajorFunction[IRP_MJ_DEVICE_CONTROL] = io_device_control;
 	driver->DriverUnload = driver_unload;
 
+	DWORD64 result;
+	g_memory.find_pattern_um(0, INT_MAX, "\xBB\xAA\xFF\xEE\xDD\xCC\xBB\xAA", "xxxxxxxx", 0, &result);
+
 	return STATUS_SUCCESS;
 }
 

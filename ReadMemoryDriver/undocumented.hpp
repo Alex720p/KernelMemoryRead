@@ -142,35 +142,35 @@ namespace undocumented {
 
     typedef struct _MMVAD_SHORT {
         RTL_BALANCED_NODE node;
-        __int16 start_vpn;
-        __int16 end_vpn;
+        unsigned __int16 start_vpn;
+        unsigned __int16 end_vpn;
         char starting_vpn_high;
         char ending_vpn_high;
         char commit_charge_high;
         char spare_NT64vad;
         __int16 reference_count;
         __int8 push_lock; //_EX_PUSH_LOCK type
-        __int32 u; //MMVAD_FLAGS
-        __int32 u1; //MMVAD_FLAGS1
-        __int32 u5;
+        unsigned __int32 u; //MMVAD_FLAGS
+        unsigned __int32 u1; //MMVAD_FLAGS1
+        unsigned __int32 u5;
     } MMVAD_SHORT, *PMMVAD_SHORT;
 
     //bitfield
     typedef struct _MMVAD_FLAGS {
-        __int32 lock : 1;
-        __int32 lock_contended : 1;
-        __int32 delete_in_progress : 1;
-        __int32 no_change : 1;
-        __int32 vad_type : 3;
-        __int32 protection : 5;
-        __int32 preffered_node : 7;
-        __int32 page_size : 2;
-        __int32 private_memory : 1;
+        unsigned __int32 lock : 1;
+        unsigned __int32 lock_contended : 1;
+        unsigned __int32 delete_in_progress : 1;
+        unsigned __int32 no_change : 1;
+        unsigned __int32 vad_type : 3;
+        unsigned __int32 protection : 5;
+        unsigned __int32 preffered_node : 7;
+        unsigned __int32 page_size : 2;
+        unsigned __int32 private_memory : 1;
     } MMVAD_FLAGS;
 
     //bitfield
     typedef struct _MMVAD_FLAGS1 {
-        __int32 commit_charge : 31;
-        __int32 mem_commit : 1;
+        unsigned __int32 commit_charge : 31;
+        unsigned __int32 mem_commit : 1;
     } MMVAD_FLAGS1;
 }

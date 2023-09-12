@@ -258,32 +258,30 @@ NTSTATUS Memory::allocate_virtual_memory_in_um(_In_ SIZE_T region_size, _In_ ULO
 #pragma warning(pop)
 
 
-NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ DWORD64 search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int sig_length, _Out_ DWORD64* result) {
-	NTSTATUS status = STATUS_SUCCESS;
+NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ unsigned int search_size, _In_ const char* sig, _In_ const char* mask, _In_ int offset, _In_ unsigned __int64 sig_length, _In_ char* buffer, _Out_ DWORD64* result) {
+	NTSTATUS status = STATUS_NOT_FOUND;
+	bool found = false;
+
+	RtlSecureZeroMemory(buffer, sig_length); //erase any informations from older buffers (very unlikely we would get a false positive but still...)
+
 	undocumented::MMVAD_FLAGS1 flags1 = static_cast<undocumented::MMVAD_FLAGS1>(vad->u1);
 	if (flags1.mem_commit) { //page is commited (and not reserverd), we have some data to scan
 		undocumented::MMVAD_FLAGS flags = static_cast<undocumented::MMVAD_FLAGS>(vad->u);
 		if (flags.protection & PAGE_READABLE) {
-			DWORD64 page_start = vad->start_vpn << VIRTUAL_PAGE_OFFSET;
-			DWORD64 page_end = vad->end_vpn << VIRTUAL_PAGE_OFFSET + VIRTUAL_PAGE_SIZE;
+			unsigned int page_start = vad->start_vpn << VIRTUAL_PAGE_OFFSET;
+			unsigned int page_end = (vad->end_vpn << VIRTUAL_PAGE_OFFSET) + VIRTUAL_PAGE_SIZE;
 
 			for (unsigned int i = page_start; i < page_end; i += VIRTUAL_PAGE_SIZE) {
-				if (page_start < start)
+				if (page_start < start || page_start >= start + search_size)
 					break;
 
+				SIZE_T bytes_read;
+				status = this->read_memory(i, VIRTUAL_PAGE_SIZE, buffer + sig_length, VIRTUAL_PAGE_SIZE, &bytes_read);
+				if (!NT_SUCCESS(status))
+					return status;
+
 				for (unsigned int j = 0; j < VIRTUAL_PAGE_SIZE; j++) {
-					
-				}
-
-			}
-			SIZE_T bytes_read = 0;
-			status = this->read_memory(i, VIRTUAL_PAGE_SIZE, buffer + sig_length, VIRTUAL_PAGE_SIZE, &bytes_read);
-			if (NT_SUCCESS(status)) {
-				KAPC_STATE apc_state;
-				KeStackAttachProcess(this->process, &apc_state);
-
-				for (SIZE_T j = 0; j < VIRTUAL_PAGE_SIZE; j++) {
-					for (SIZE_T k = 0; k < sig_length; k++) {
+					for (unsigned int k = 0; k < sig_length; k++) {
 						if (buffer[j + k] != sig[k] && mask[k] != '?')
 							break;
 
@@ -292,88 +290,38 @@ NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start
 							*result = i + j - sig_length + offset;
 						}
 					}
-				}
-				memcpy(buffer, &buffer[VIRTUAL_PAGE_SIZE], sig_length); //copy the end of old page into buffer for possible cross page sigs
 
-				KeUnstackDetachProcess(apc_state);
+					memcpy(buffer, &buffer[VIRTUAL_PAGE_SIZE], sig_length); //copy the end of old page into buffer for possible cross page sigs
+				}
 			}
 		}
-
-		return status;
-		}
 	}
+
+	if (found)
+		return STATUS_SUCCESS;
+	else {
+		if (vad->node.left_child)
+			status = this->pattern_scan(reinterpret_cast<undocumented::PMMVAD_SHORT>(vad->node.left_child), start, search_size, sig, mask, offset, sig_length, buffer, result);
+
+		if (vad->node.right_child)
+			status = this->pattern_scan(reinterpret_cast<undocumented::PMMVAD_SHORT>(vad->node.right_child), start, search_size, sig, mask, offset, sig_length, buffer, result);
+	}
+
+	return status;
 }
 
 
-NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int offset, _Out_ DWORD64* result) {
+NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ unsigned int search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int offset, _Out_ DWORD64* result) {
 	if (!this->process)
 		return STATUS_CANCELLED;
-	
-	DWORD64 proc_base_addr;
-	NTSTATUS status = this->get_process_base_address(&proc_base_addr);
-	if (!NT_SUCCESS(status))
-		return status;
 
-	SIZE_T sig_length = strlen(sig);
-	MEMORY_BASIC_INFORMATION mem_basic_info = { 0 };
-	char* buffer = nullptr;
-	//TODO: allocate the buffer into phys mem so no need to attach
-	status = this->allocate_virtual_memory_in_um(VIRTUAL_PAGE_SIZE + sig_length, MEM_COMMIT, PAGE_READWRITE, buffer); //allocate buffer in um, we'll allocate the least amount of memory possible in kernel
-	if (!NT_SUCCESS(status))
-		return status;
-
-	MEMORY_BASIC_INFORMATION mem_info = { 0 };
-	bool found = false;
-	for (SIZE_T i = start; i < search_size; i += VIRTUAL_PAGE_SIZE) {
-		if (found)
-			break;
-
-		status = this->query_virtual_memory_in_um(i, &mem_info, sizeof(mem_info));
-		if (!NT_SUCCESS(status))
-			continue;
-
-		if (!(mem_info.Protect & PAGE_READABLE))
-			continue;
-
-		SIZE_T bytes_read = 0;
-		status = this->read_memory(i, VIRTUAL_PAGE_SIZE, buffer + sig_length, VIRTUAL_PAGE_SIZE, &bytes_read);
-		if (!NT_SUCCESS(status))
-			break;
-
-		PKAPC_STATE apc_state = reinterpret_cast<PRKAPC_STATE>(ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC_STATE), DRIVER_TAG));
-		if (!apc_state)
-			break;
-
-		KeStackAttachProcess(this->process, apc_state);
-
-		for (SIZE_T j = 0; j < VIRTUAL_PAGE_SIZE; j++) {
-			for (SIZE_T k = 0; k < sig_length; k++) {
-				if (buffer[j + k] != sig[k] && mask[k] != '?')
-					break;
-
-				if (k == sig_length - 1) {
-					found = true;
-					*result = i + j - sig_length + offset;
-				}
-			}
-		}
-		memcpy(buffer, &buffer[VIRTUAL_PAGE_SIZE], sig_length); //copy the end of old page into buffer for possible cross page sigs
-
-		KeUnstackDetachProcess(apc_state);
-
-	}
-
-	status = this->free_virtual_memory_in_um(buffer, VIRTUAL_PAGE_SIZE + sig_length);
-
-	return status;
-
+	unsigned __int64 sig_length = strlen(sig);
+	char* buffer = reinterpret_cast<char*>(ExAllocatePool2(POOL_FLAG_PAGED, VIRTUAL_PAGE_SIZE + sig_length, DRIVER_TAG));
+	//TODO: allocate the buffer into um app (manually) and keep it locked into phys mem so no attach
+	if (!buffer)
+		return STATUS_INSUFFICIENT_RESOURCES;
 
 	undocumented::PMMVAD_SHORT root = reinterpret_cast<undocumented::PMMVAD_SHORT>(reinterpret_cast<DWORD64>(this->process) + VADROOT_OFFSET);
-	if (!root)
-		return STATUS_CANCELLED; //should never normally happen
-
-	undocumented::MMVAD_FLAGS1 flags1 = static_cast<undocumented::MMVAD_FLAGS1>(root->u1);
-	if (!flags1.mem_commit)
-
-
+	NTSTATUS status = this->pattern_scan(root, start, search_size, sig, mask, offset, sig_length, buffer, result);
+	return status;
 }
