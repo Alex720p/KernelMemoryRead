@@ -2,7 +2,7 @@
 
 #include <intrin.h>
 
-#include "documented.hpp"
+
 #include "undocumented.hpp"
 
 
@@ -53,15 +53,30 @@
 
 #define LINEAR_ADDRESS_OFFSET_SIZE 8
 
-//PEPROCESS offsets
-#define DIRECTORY_TABLE_BASE_OFFSET 0x28 //win 22H2
+//PEPROCESS offsets (win 22h2)
+#define DIRECTORY_TABLE_BASE_OFFSET 0x28
+#define VADROOT_OFFSET 0x7d8
+
+#define VIRTUAL_PAGE_SIZE 4096
+#define VIRTUAL_PAGE_OFFSET 12
+
+#define PAGE_READABLE PAGE_READONLY | PAGE_READWRITE
+
+#define MEM_PHYSICAL 0x00400000
+
+//non-official functions prototypes
 typedef NTSTATUS(*ZwQuerySystemInformationPrototype) (_In_ undocumented::SYSTEM_INFORMATION_CLASS, _Inout_ PVOID, _In_ ULONG, _Out_opt_ PULONG);
+typedef PVOID(*PsGetProcessSectionBaseAddressPrototype) (_In_ PEPROCESS);
 
 //TODO: add a function to check for windows version
+//note: some error checking are omited (driver won't be using seh anyways when loaded)
 
 struct Memory {
 private:
 	PEPROCESS process = nullptr;
+
+
+	NTSTATUS pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ DWORD64 search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int sig_length, _Out_ DWORD64* result);
 public:
 
 	void deference_process() {
@@ -74,7 +89,12 @@ public:
 	non ideal since it increases the object reference count. Other way could have been to walk the EPROCESS list but not a stable solution (no ref count in this case)
 	note: name is a bit misleading, we're not attaching to the process, rather storing the EPROCESS structure we'll use for the reads
 	*/
-	NTSTATUS process_context_attach(_In_ WCHAR* proc_name, _In_ ULONG proc_name_size);
+	NTSTATUS store_process_context(_In_ WCHAR* proc_name, _In_ ULONG proc_name_size);
+
+
+	NTSTATUS get_process_base_address(_Out_ DWORD64* base_addr);
+
+	NTSTATUS query_virtual_memory_in_um(_In_ DWORD64 base_addr, _Out_ PVOID memory_info, _In_ SIZE_T memory_info_length);
 
 	/*wrapper for physical read with MmCopyMemory
 	  note: buffer has to be in non paged memory
@@ -88,10 +108,17 @@ public:
 	NTSTATUS read_memory(_In_ DWORD64 addr, _In_ SIZE_T size, _Out_ PVOID buffer, _In_ SIZE_T buffer_size, _Out_ SIZE_T* bytes_read);
 
 	/*https://www.unknowncheats.me/forum/general-programming-and-reversing/523359-introduction-physical-memory.html translation process explained :)
-	  todo: find a way to read mem that has been paged out ? check way to get it from disk or just use MmProbeAndLockPages/Unlock
 	  buffer has to be in non paged memory
+	  todo: find a way to read mem that has been paged out ? check way to get it from disk or just use MmProbeAndLockPages/Unlock
 	*/
 	//
 	NTSTATUS read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T size, _Out_ PVOID buffer, _Out_ SIZE_T* bytes_read);
+
+	NTSTATUS allocate_virtual_memory_in_um(_In_ SIZE_T region_size, _In_ ULONG alloc_type, _In_ ULONG protect, _Out_ PVOID base_addr);
+
+	NTSTATUS free_virtual_memory_in_um(_In_ PVOID base_addr, _In_ SIZE_T region_size, _In_ ULONG free_type = MEM_RELEASE);
+
+	NTSTATUS find_pattern_um(_In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int offset, _Out_ DWORD64* result); //only for usermode memory
+
 
 };

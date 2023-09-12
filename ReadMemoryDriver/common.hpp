@@ -1,6 +1,12 @@
 #pragma once
 #include <ntddk.h>
 
+//for 'shared' memory communication
+#define PATTERN_1 0xAABBCCDDEEFFAABB
+#define PATTERN_2 0xBBAAFFEEDDCCBBAA //will be used to find ReadMemoryClient
+
+
+//for io
 //commons for driver and client
 
 #define READER_DEVICE 0x8000
@@ -22,3 +28,14 @@ struct ReadRequest {
 	DWORD64 address;
 	ULONG size;
 };
+
+//for 'shared memory' communications
+struct RecurringReadRequest {
+	DWORD64 read_addr;
+	SIZE_T read_size;
+	unsigned long interval;
+};
+
+
+
+

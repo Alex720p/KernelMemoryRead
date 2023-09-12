@@ -42,6 +42,7 @@ void driver_unload(_In_ PDRIVER_OBJECT driver) {
 	//todo: unreference EPROCESS on each change
 }
 
+
 NTSTATUS io_create_close(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
 	UNREFERENCED_PARAMETER(device);
 
@@ -66,7 +67,8 @@ NTSTATUS io_device_control(_In_ PDEVICE_OBJECT device, _In_ PIRP irp) {
 			}
 
 			InitializeRequest* buffer = reinterpret_cast<InitializeRequest*>(irp->AssociatedIrp.SystemBuffer);
-			status = g_memory.process_context_attach(buffer->proc_name, buffer->proc_name_size);
+			buffer;
+			//status = g_memory.process_context_attach(buffer->proc_name, buffer->proc_name_size);
 
 			break;
 		}
