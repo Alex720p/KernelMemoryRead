@@ -76,7 +76,7 @@ private:
 	PEPROCESS process = nullptr;
 
 
-	NTSTATUS pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ unsigned int search_size, _In_ const char* sig, _In_ const char* mask, _In_ int offset, _In_ unsigned __int64 sig_length, _In_ char* buffer, _Out_ DWORD64* result);
+	NTSTATUS pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ int offset, _In_ unsigned __int64 sig_length, _In_ char* buffer, _Out_ DWORD64* result);
 public:
 
 	void deference_process() {
@@ -118,7 +118,7 @@ public:
 
 	NTSTATUS free_virtual_memory_in_um(_In_ PVOID base_addr, _In_ SIZE_T region_size, _In_ ULONG free_type = MEM_RELEASE);
 
-	NTSTATUS find_pattern_um(_In_ DWORD64 start, _In_ unsigned int search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int offset, _Out_ DWORD64* result); //only for usermode memory
+	NTSTATUS find_pattern_um(_In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int offset, _Out_ DWORD64* result); //only for usermode memory
 
 
 };

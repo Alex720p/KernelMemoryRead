@@ -258,20 +258,21 @@ NTSTATUS Memory::allocate_virtual_memory_in_um(_In_ SIZE_T region_size, _In_ ULO
 #pragma warning(pop)
 
 
-NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ unsigned int search_size, _In_ const char* sig, _In_ const char* mask, _In_ int offset, _In_ unsigned __int64 sig_length, _In_ char* buffer, _Out_ DWORD64* result) {
+NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ int offset, _In_ unsigned __int64 sig_length, _In_ char* buffer, _Out_ DWORD64* result) {
+
 	NTSTATUS status = STATUS_NOT_FOUND;
 	bool found = false;
 
 	RtlSecureZeroMemory(buffer, sig_length); //erase any informations from older buffers (very unlikely we would get a false positive but still...)
 
-	undocumented::MMVAD_FLAGS1 flags1 = static_cast<undocumented::MMVAD_FLAGS1>(vad->u1);
+	undocumented::MMVAD_FLAGS1 flags1 = *reinterpret_cast<undocumented::MMVAD_FLAGS1*>(&vad->u1); //probably bad pratice but I don't see any other way to do this (unless declaring it directly into the struct but I don't want that...)
 	if (flags1.mem_commit) { //page is commited (and not reserverd), we have some data to scan
-		undocumented::MMVAD_FLAGS flags = static_cast<undocumented::MMVAD_FLAGS>(vad->u);
+		undocumented::MMVAD_FLAGS flags = *reinterpret_cast<undocumented::MMVAD_FLAGS*>(&vad->u); //same
 		if (flags.protection & PAGE_READABLE) {
-			unsigned int page_start = vad->start_vpn << VIRTUAL_PAGE_OFFSET;
-			unsigned int page_end = (vad->end_vpn << VIRTUAL_PAGE_OFFSET) + VIRTUAL_PAGE_SIZE;
+			DWORD64 page_start = static_cast<DWORD64>(vad->start_vpn) << VIRTUAL_PAGE_OFFSET;
+			DWORD64 page_end = (static_cast<DWORD64>(vad->end_vpn) << VIRTUAL_PAGE_OFFSET) + VIRTUAL_PAGE_SIZE;
 
-			for (unsigned int i = page_start; i < page_end; i += VIRTUAL_PAGE_SIZE) {
+			for (DWORD64 i = page_start; i < page_end; i += VIRTUAL_PAGE_SIZE) {
 				if (page_start < start || page_start >= start + search_size)
 					break;
 
@@ -290,9 +291,8 @@ NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start
 							*result = i + j - sig_length + offset;
 						}
 					}
-
-					memcpy(buffer, &buffer[VIRTUAL_PAGE_SIZE], sig_length); //copy the end of old page into buffer for possible cross page sigs
 				}
+				memcpy(buffer, &buffer[VIRTUAL_PAGE_SIZE], sig_length); //copy the end of old page into buffer for possible cross page sigs
 			}
 		}
 	}
@@ -303,15 +303,18 @@ NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start
 		if (vad->node.left_child)
 			status = this->pattern_scan(reinterpret_cast<undocumented::PMMVAD_SHORT>(vad->node.left_child), start, search_size, sig, mask, offset, sig_length, buffer, result);
 
-		if (vad->node.right_child)
+		if (vad->node.right_child && !NT_SUCCESS(status))
 			status = this->pattern_scan(reinterpret_cast<undocumented::PMMVAD_SHORT>(vad->node.right_child), start, search_size, sig, mask, offset, sig_length, buffer, result);
+
+		if (NT_SUCCESS(status))
+			return status;
 	}
 
 	return status;
 }
 
 
-NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ unsigned int search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int offset, _Out_ DWORD64* result) {
+NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int offset, _Out_ DWORD64* result) {
 	if (!this->process)
 		return STATUS_CANCELLED;
 
@@ -321,8 +324,11 @@ NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ unsigned int search_si
 	if (!buffer)
 		return STATUS_INSUFFICIENT_RESOURCES;
 
-	undocumented::PMMVAD_SHORT root = reinterpret_cast<undocumented::PMMVAD_SHORT>(reinterpret_cast<DWORD64>(this->process) + VADROOT_OFFSET);
-	
+	DWORD64 tree = *reinterpret_cast<DWORD64*>(reinterpret_cast<DWORD64>(this->process) + VADROOT_OFFSET);
+	undocumented::PMMVAD_SHORT root = reinterpret_cast<undocumented::PMMVAD_SHORT>(tree);
+	if (!root)
+		return STATUS_CANCELLED;
+
 	NTSTATUS status = this->pattern_scan(root, start, search_size, sig, mask, offset, sig_length, buffer, result);
 
 	ExFreePool(buffer);

@@ -137,19 +137,19 @@ namespace undocumented {
     typedef struct _RTL_BALANCED_NODE {
         PVOID left_child;
         PVOID right_child;
-        unsigned __int64 parent; //just make off the 4 bits of least weight to get the parent value
+        PVOID parent; //just make off the 4 LSBs to get the parent value
     } RTL_BALANCED_NODE, *PRTL_BALANCED_NODE;
 
     typedef struct _MMVAD_SHORT {
         RTL_BALANCED_NODE node;
-        unsigned __int16 start_vpn;
-        unsigned __int16 end_vpn;
-        char starting_vpn_high;
-        char ending_vpn_high;
-        char commit_charge_high;
-        char spare_NT64vad;
-        __int16 reference_count;
-        __int8 push_lock; //_EX_PUSH_LOCK type
+        unsigned __int32 start_vpn;
+        unsigned __int32 end_vpn;
+        unsigned char starting_vpn_high;
+        unsigned char ending_vpn_high;
+        unsigned char commit_charge_high;
+        unsigned char spare_NT64vad;
+        __int32 reference_count;
+        PVOID push_lock; //_EX_PUSH_LOCK type
         unsigned __int32 u; //MMVAD_FLAGS
         unsigned __int32 u1; //MMVAD_FLAGS1
         unsigned __int32 u5;
