@@ -277,9 +277,10 @@ NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start
 					break;
 
 				SIZE_T bytes_read;
-				status = this->read_memory(i, VIRTUAL_PAGE_SIZE, buffer + sig_length, VIRTUAL_PAGE_SIZE, &bytes_read);
-				if (!NT_SUCCESS(status))
-					return status;
+				//TODO: lock and read from phys mem
+				NTSTATUS read_status = this->read_memory(i, VIRTUAL_PAGE_SIZE, buffer + sig_length, VIRTUAL_PAGE_SIZE, &bytes_read);
+				if (!NT_SUCCESS(read_status))
+					return read_status;
 
 				for (unsigned int j = 0; j < VIRTUAL_PAGE_SIZE; j++) {
 					for (unsigned int k = 0; k < sig_length; k++) {
@@ -318,7 +319,7 @@ NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ SIZE_T search_size, _I
 	if (!this->process)
 		return STATUS_CANCELLED;
 
-	unsigned __int64 sig_length = strlen(sig);
+	unsigned __int64 sig_length = strlen(mask);
 	char* buffer = reinterpret_cast<char*>(ExAllocatePool2(POOL_FLAG_PAGED, VIRTUAL_PAGE_SIZE + sig_length, DRIVER_TAG));
 	//TODO: allocate the buffer into um app (manually) and keep it locked into phys mem so no attach
 	if (!buffer)
