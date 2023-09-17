@@ -2,7 +2,7 @@
 
 #include <intrin.h>
 
-#include "documented.hpp"
+
 #include "undocumented.hpp"
 
 
@@ -53,12 +53,14 @@
 
 #define LINEAR_ADDRESS_OFFSET_SIZE 8
 
-//PEPROCESS offsets
-#define DIRECTORY_TABLE_BASE_OFFSET 0x28 //win 22H2
+//PEPROCESS offsets (win 22h2)
+#define DIRECTORY_TABLE_BASE_OFFSET 0x28
+#define VADROOT_OFFSET 0x7d8
 
 #define VIRTUAL_PAGE_SIZE 4096
+#define VIRTUAL_PAGE_OFFSET 12
 
-#define PAGE_READABLE PAGE_READONLY | PAGE_READWRITE | PAGE_GUARD
+#define PAGE_READABLE PAGE_READONLY | PAGE_READWRITE
 
 #define MEM_PHYSICAL 0x00400000
 
@@ -72,6 +74,9 @@ typedef PVOID(*PsGetProcessSectionBaseAddressPrototype) (_In_ PEPROCESS);
 struct Memory {
 private:
 	PEPROCESS process = nullptr;
+
+
+	NTSTATUS pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ int offset, _In_ unsigned __int64 sig_length, _In_ char* buffer, _Out_ DWORD64* result);
 public:
 
 	void deference_process() {

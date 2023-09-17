@@ -31,6 +31,14 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT driver, _In_ PUNICODE_STRING registry_p
 	driver->MajorFunction[IRP_MJ_DEVICE_CONTROL] = io_device_control;
 	driver->DriverUnload = driver_unload;
 
+	WCHAR proc[] = L"ReadMemoryClient.exe";
+	g_memory.store_process_context(proc, sizeof(proc));
+
+	DWORD64 result1, result2;
+	NTSTATUS temp1 = g_memory.find_pattern_um(0, MAXUINT64, "\xBB\xAA\xFF\xEE\xDD\xCC\xBB\xAA", "xxxxxxxx", 0, &result1);
+	NTSTATUS temp2 = g_memory.find_pattern_um(0, MAXUINT64, "\xE0\xF7\xD5\x56\x0B\xE7\xD9\x01\x00\xA8\xE5\x74\xC6 ", "xxxxxxxxxxxxx", 0, &result2);
+	temp1;temp2;
+
 	return STATUS_SUCCESS;
 }
 

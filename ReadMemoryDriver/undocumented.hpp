@@ -1,5 +1,7 @@
 #pragma once
+#include <ntifs.h>
 
+//contains some semi-documented/'undocumented' structures
 namespace undocumented {
     //https://github.com/conix-security/zer0m0n/blob/master/src/driver/include/nt/structures/SYSTEM_INFORMATION_CLASS.h
     typedef enum _SYSTEM_INFORMATION_CLASS
@@ -89,4 +91,86 @@ namespace undocumented {
         MaxSystemInfoClass = 82  // MaxSystemInfoClass should always be the last enum
 
     } SYSTEM_INFORMATION_CLASS;
+
+    //semi-documented on msdn
+    //rest from https://www.unknowncheats.me/forum/anti-cheat-bypass/424340-enumerate-processes-process.html (orig. from process hacker github)
+    //only valid for x64 architecture
+    typedef struct _SYSTEM_PROCESS_INFORMATION
+    {
+        ULONG NextEntryOffset;
+        ULONG NumberOfThreads;
+        LARGE_INTEGER WorkingSetPrivateSize; // since VISTA
+        ULONG HardFaultCount; // since WIN7
+        ULONG NumberOfThreadsHighWatermark; // since WIN7
+        ULONGLONG CycleTime; // since WIN7
+        LARGE_INTEGER CreateTime;
+        LARGE_INTEGER UserTime;
+        LARGE_INTEGER KernelTime;
+        UNICODE_STRING ImageName;
+        KPRIORITY BasePriority;
+        HANDLE UniqueProcessId;
+        /*HANDLE InheritedFromUniqueProcessId;
+        ULONG HandleCount;
+        ULONG SessionId;
+        ULONG_PTR UniqueProcessKey; // since VISTA (requires SystemExtendedProcessInformation)
+        SIZE_T PeakVirtualSize;
+        SIZE_T VirtualSize;
+        ULONG PageFaultCount;
+        SIZE_T PeakWorkingSetSize;
+        SIZE_T WorkingSetSize;
+        SIZE_T QuotaPeakPagedPoolUsage;
+        SIZE_T QuotaPagedPoolUsage;
+        SIZE_T QuotaPeakNonPagedPoolUsage;
+        SIZE_T QuotaNonPagedPoolUsage;
+        SIZE_T PagefileUsage;
+        SIZE_T PeakPagefileUsage;
+        SIZE_T PrivatePageCount;
+        LARGE_INTEGER ReadOperationCount;
+        LARGE_INTEGER WriteOperationCount;
+        LARGE_INTEGER OtherOperationCount;
+        LARGE_INTEGER ReadTransferCount;
+        LARGE_INTEGER WriteTransferCount;
+        LARGE_INTEGER OtherTransferCount;*/
+    } SYSTEM_PROCESS_INFORMATION, *PSYSTEM_PROCESS_INFORMATION;
+
+
+    typedef struct _RTL_BALANCED_NODE {
+        PVOID left_child;
+        PVOID right_child;
+        PVOID parent; //just make off the 4 LSBs to get the parent value
+    } RTL_BALANCED_NODE, *PRTL_BALANCED_NODE;
+
+    typedef struct _MMVAD_SHORT {
+        RTL_BALANCED_NODE node;
+        unsigned __int32 start_vpn;
+        unsigned __int32 end_vpn;
+        unsigned char starting_vpn_high;
+        unsigned char ending_vpn_high;
+        unsigned char commit_charge_high;
+        unsigned char spare_NT64vad;
+        __int32 reference_count;
+        PVOID push_lock; //_EX_PUSH_LOCK type
+        unsigned __int32 u; //MMVAD_FLAGS
+        unsigned __int32 u1; //MMVAD_FLAGS1
+        unsigned __int32 u5;
+    } MMVAD_SHORT, *PMMVAD_SHORT;
+
+    //bitfield
+    typedef struct _MMVAD_FLAGS {
+        unsigned __int32 lock : 1;
+        unsigned __int32 lock_contended : 1;
+        unsigned __int32 delete_in_progress : 1;
+        unsigned __int32 no_change : 1;
+        unsigned __int32 vad_type : 3;
+        unsigned __int32 protection : 5;
+        unsigned __int32 preffered_node : 7;
+        unsigned __int32 page_size : 2;
+        unsigned __int32 private_memory : 1;
+    } MMVAD_FLAGS;
+
+    //bitfield
+    typedef struct _MMVAD_FLAGS1 {
+        unsigned __int32 commit_charge : 31;
+        unsigned __int32 mem_commit : 1;
+    } MMVAD_FLAGS1;
 }

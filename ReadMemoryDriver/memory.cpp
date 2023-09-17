@@ -22,12 +22,12 @@ NTSTATUS Memory::store_process_context(_In_ WCHAR* proc_name, _In_ ULONG proc_na
 	ZwQuerySystemInformationPrototype ZwQuerySystemInformation = reinterpret_cast<ZwQuerySystemInformationPrototype>(func_addr);
 
 	ULONG return_length = 0;
-	documented::SYSTEM_PROCESS_INFORMATION dummy = { 0 };
-	documented::PSYSTEM_PROCESS_INFORMATION curr_proc_info;
+	undocumented::SYSTEM_PROCESS_INFORMATION dummy = { 0 };
+	undocumented::PSYSTEM_PROCESS_INFORMATION curr_proc_info;
 	NTSTATUS status = ZwQuerySystemInformation(undocumented::SystemProcessInformation, &dummy, sizeof(dummy), &return_length);
 	do {
 		ULONG buffer_size = return_length + 0x1000; //note: 0x1000 is arbitrary, it gives a margin if the buffer size needed increases between calls
-		curr_proc_info = reinterpret_cast<documented::SYSTEM_PROCESS_INFORMATION*>(ExAllocatePool2(POOL_FLAG_PAGED, static_cast<SIZE_T>(buffer_size), DRIVER_TAG));
+		curr_proc_info = reinterpret_cast<undocumented::SYSTEM_PROCESS_INFORMATION*>(ExAllocatePool2(POOL_FLAG_PAGED, static_cast<SIZE_T>(buffer_size), DRIVER_TAG));
 		if (curr_proc_info == NULL)
 			return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -40,7 +40,7 @@ NTSTATUS Memory::store_process_context(_In_ WCHAR* proc_name, _In_ ULONG proc_na
 
 	bool found = false;
 	PVOID buffer_start = reinterpret_cast<PVOID>(curr_proc_info);
-	documented::PSYSTEM_PROCESS_INFORMATION next_proc_info = reinterpret_cast<documented::PSYSTEM_PROCESS_INFORMATION>(reinterpret_cast<DWORD64>(curr_proc_info) + curr_proc_info->NextEntryOffset); //first entry seems to always be empty
+	undocumented::PSYSTEM_PROCESS_INFORMATION next_proc_info = reinterpret_cast<undocumented::PSYSTEM_PROCESS_INFORMATION>(reinterpret_cast<DWORD64>(curr_proc_info) + curr_proc_info->NextEntryOffset); //first entry seems to always be empty
 	do {
 		curr_proc_info = next_proc_info;
 		UNICODE_STRING image_name = curr_proc_info->ImageName;
@@ -55,7 +55,7 @@ NTSTATUS Memory::store_process_context(_In_ WCHAR* proc_name, _In_ ULONG proc_na
 
 			break;
 		}
-		next_proc_info = reinterpret_cast<documented::PSYSTEM_PROCESS_INFORMATION>(reinterpret_cast<DWORD64>(curr_proc_info) + curr_proc_info->NextEntryOffset);
+		next_proc_info = reinterpret_cast<undocumented::PSYSTEM_PROCESS_INFORMATION>(reinterpret_cast<DWORD64>(curr_proc_info) + curr_proc_info->NextEntryOffset);
 	} while (curr_proc_info->NextEntryOffset != NULL);
 
 	ExFreePool(buffer_start);
@@ -219,7 +219,7 @@ NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size,
 
 #pragma warning(push)
 #pragma warning(disable:6001)
-NTSTATUS Memory::free_virtual_memory_in_um(_In_ PVOID base_addr, _In_ SIZE_T region_size, _In_ ULONG free_type = MEM_RELEASE) {
+NTSTATUS Memory::free_virtual_memory_in_um(_In_ PVOID base_addr, _In_ SIZE_T region_size, _In_ ULONG free_type) {
 	if (!this->process)
 		return STATUS_CANCELLED;
 
@@ -257,69 +257,81 @@ NTSTATUS Memory::allocate_virtual_memory_in_um(_In_ SIZE_T region_size, _In_ ULO
 }
 #pragma warning(pop)
 
-NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ _In_ unsigned int offset, _Out_ DWORD64* result) {
-	if (!this->process)
-		return STATUS_CANCELLED;
-	
-	DWORD64 proc_base_addr;
-	NTSTATUS status = this->get_process_base_address(&proc_base_addr);
-	if (!NT_SUCCESS(status))
-		return status;
 
-	if (start < proc_base_addr)
-		return STATUS_CANCELLED;
+NTSTATUS Memory::pattern_scan(undocumented::PMMVAD_SHORT vad, _In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ int offset, _In_ unsigned __int64 sig_length, _In_ char* buffer, _Out_ DWORD64* result) {
 
-	SIZE_T sig_length = strlen(sig);
-	MEMORY_BASIC_INFORMATION mem_basic_info = { 0 };
-	char* buffer = nullptr;
-	//TODO: allocate the buffer into phys mem so no need to attach
-	NTSTATUS status = this->allocate_virtual_memory_in_um(VIRTUAL_PAGE_SIZE + sig_length, MEM_COMMIT, PAGE_READWRITE, buffer); //allocate buffer in um, we'll allocate the least amount of memory possible in kernel
-	if (!NT_SUCCESS(status))
-		return status;
-
-	MEMORY_BASIC_INFORMATION mem_info = { 0 };
+	NTSTATUS status = STATUS_NOT_FOUND;
 	bool found = false;
-	for (SIZE_T i = start; i < search_size; i += VIRTUAL_PAGE_SIZE) {
-		if (found)
-			break;
 
-		NTSTATUS status = this->query_virtual_memory_in_um(i, &mem_info, sizeof(mem_info));
-		if (!NT_SUCCESS(status))
-			continue;
+	RtlSecureZeroMemory(buffer, sig_length); //erase any informations from older buffers (very unlikely we would get a false positive but still...)
 
-		if (!(mem_info.Protect & PAGE_READABLE))
-			continue;
+	undocumented::MMVAD_FLAGS1 flags1 = *reinterpret_cast<undocumented::MMVAD_FLAGS1*>(&vad->u1); //probably bad pratice but I don't see any other way to do this (unless declaring it directly into the struct but I don't want that...)
+	if (flags1.mem_commit) { //page is commited (and not reserverd), we have some data to scan
+		undocumented::MMVAD_FLAGS flags = *reinterpret_cast<undocumented::MMVAD_FLAGS*>(&vad->u); //same
+		if (flags.protection & PAGE_READABLE) {
+			DWORD64 page_start = static_cast<DWORD64>(vad->start_vpn) << VIRTUAL_PAGE_OFFSET;
+			DWORD64 page_end = (static_cast<DWORD64>(vad->end_vpn) << VIRTUAL_PAGE_OFFSET) + VIRTUAL_PAGE_SIZE;
 
-		SIZE_T bytes_read = 0;
-		status = this->read_memory(i, VIRTUAL_PAGE_SIZE, buffer + sig_length, VIRTUAL_PAGE_SIZE, &bytes_read);
-		if (!NT_SUCCESS(status))
-			break;
-
-		PRKAPC_STATE apc_state = reinterpret_cast<PRKAPC_STATE>(ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC_STATE), DRIVER_TAG));
-		if (!apc_state)
-			break;
-
-		KeStackAttachProcess(this->process, apc_state);
-
-		for (SIZE_T j = 0; j < VIRTUAL_PAGE_SIZE; j++) {
-			for (SIZE_T k = 0; k < sig_length; k++) {
-				if (buffer[j + k] != sig[k] && mask[k] != '?')
+			for (DWORD64 i = page_start; i < page_end; i += VIRTUAL_PAGE_SIZE) {
+				if (page_start < start || page_start >= start + search_size)
 					break;
 
-				if (k == sig_length - 1) {
-					found = true;
-					*result = i + j + offset;
+				SIZE_T bytes_read;
+				//TODO: lock and read from phys mem
+				NTSTATUS read_status = this->read_memory(i, VIRTUAL_PAGE_SIZE, buffer + sig_length, VIRTUAL_PAGE_SIZE, &bytes_read);
+				if (!NT_SUCCESS(read_status))
+					return read_status;
+
+				for (unsigned int j = 0; j < VIRTUAL_PAGE_SIZE; j++) {
+					for (unsigned int k = 0; k < sig_length; k++) {
+						if (buffer[j + k] != sig[k] && mask[k] != '?')
+							break;
+
+						if (k == sig_length - 1) {
+							found = true;
+							*result = i + j - sig_length + offset;
+						}
+					}
 				}
+				memcpy(buffer, &buffer[VIRTUAL_PAGE_SIZE], sig_length); //copy the end of old page into buffer for possible cross page sigs
 			}
 		}
-		memcpy(buffer, &buffer[VIRTUAL_PAGE_SIZE], sig_length); //copy the end of old page into buffer for possible cross page sigs
-
-		KeUnstackDetachProcess(apc_state);
-
 	}
 
-	status = this->free_virtual_memory_in_um(buffer, VIRTUAL_PAGE_SIZE + sig_length);
+	if (found)
+		return STATUS_SUCCESS;
+	else {
+		if (vad->node.left_child)
+			status = this->pattern_scan(reinterpret_cast<undocumented::PMMVAD_SHORT>(vad->node.left_child), start, search_size, sig, mask, offset, sig_length, buffer, result);
+
+		if (vad->node.right_child && !NT_SUCCESS(status))
+			status = this->pattern_scan(reinterpret_cast<undocumented::PMMVAD_SHORT>(vad->node.right_child), start, search_size, sig, mask, offset, sig_length, buffer, result);
+
+		if (NT_SUCCESS(status))
+			return status;
+	}
 
 	return status;
-	//todo: free memory
+}
+
+
+NTSTATUS Memory::find_pattern_um(_In_ DWORD64 start, _In_ SIZE_T search_size, _In_ const char* sig, _In_ const char* mask, _In_ unsigned int offset, _Out_ DWORD64* result) {
+	if (!this->process)
+		return STATUS_CANCELLED;
+
+	unsigned __int64 sig_length = strlen(mask);
+	char* buffer = reinterpret_cast<char*>(ExAllocatePool2(POOL_FLAG_PAGED, VIRTUAL_PAGE_SIZE + sig_length, DRIVER_TAG));
+	//TODO: allocate the buffer into um app (manually) and keep it locked into phys mem so no attach
+	if (!buffer)
+		return STATUS_INSUFFICIENT_RESOURCES;
+
+	DWORD64 tree = *reinterpret_cast<DWORD64*>(reinterpret_cast<DWORD64>(this->process) + VADROOT_OFFSET);
+	undocumented::PMMVAD_SHORT root = reinterpret_cast<undocumented::PMMVAD_SHORT>(tree);
+	if (!root)
+		return STATUS_CANCELLED;
+
+	NTSTATUS status = this->pattern_scan(root, start, search_size, sig, mask, offset, sig_length, buffer, result);
+
+	ExFreePool(buffer);
+	return status;
 }

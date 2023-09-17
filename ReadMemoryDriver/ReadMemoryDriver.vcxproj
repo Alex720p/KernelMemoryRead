@@ -126,7 +126,6 @@
   <ItemGroup>
     <ClInclude Include="common.hpp" />
     <ClInclude Include="communication.hpp" />
-    <ClInclude Include="documented.hpp" />
     <ClInclude Include="memory.hpp" />
     <ClInclude Include="undocumented.hpp" />
   </ItemGroup>
