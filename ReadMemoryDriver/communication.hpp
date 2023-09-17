@@ -24,5 +24,5 @@ public:
 
 	void fulfil_recurring_reads();
 	bool is_class_valid() { return this->class_valid_state; }
-	~Communication() {}
+	~Communication() {} //todo: deallocate all memory
 };

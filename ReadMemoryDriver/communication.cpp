@@ -39,4 +39,5 @@ NTSTATUS Communication::allocate_new_recurring_response_buffer() {
 	return STATUS_SUCCESS;
 }
 
-void Communication::fulfil_recurring_reads() {	}
+void Communication::fulfil_recurring_reads() {	
+}
