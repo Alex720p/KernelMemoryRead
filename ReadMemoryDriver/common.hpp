@@ -2,9 +2,10 @@
 #include <ntddk.h>
 
 //for 'shared' memory communication
-#define PATTERN_1 0xAABBCCDDEEFFAABB
-#define PATTERN_2 0xBBAAFFEEDDCCBBAA //will be used to find ReadMemoryClient
+#define PATTERN_1 "\xBB\xAA\xFF\xEE\xDD\xCC\xBB\xAA"
+#define PATTERN_1_MASK "xxxxxxxx" //will be used to find the initialization buffer
 
+#define REGISTER_RECURRING_READS_BUFFER_SIZE VIRTUAL_PAGE_SIZE
 
 //for io
 //commons for driver and client

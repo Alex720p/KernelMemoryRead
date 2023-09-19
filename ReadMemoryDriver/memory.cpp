@@ -11,6 +11,24 @@ NTSTATUS Memory::read_physical_memory(_In_ DWORD64 physical_addr, _In_ SIZE_T re
 }
 #pragma warning(pop)
 
+#pragma warning(push)
+#pragma warning(disable: 6001)
+NTSTATUS Memory::write_physical_memory(_In_ DWORD64 physical_addr, _In_ SIZE_T write_size, _Out_ PVOID buffer, _Out_ PSIZE_T bytes_read) {
+	if (!buffer)
+		return STATUS_INVALID_PARAMETER;
+
+	PHYSICAL_ADDRESS phys_addr;
+	phys_addr.QuadPart = physical_addr;
+
+	PVOID mapped_phys = MmMapIoSpace(phys_addr, write_size, MmNonCached);
+	if (!mapped_phys)
+		return STATUS_INSUFFICIENT_RESOURCES;
+
+	MM_COPY_ADDRESS copy_addr = { buffer };
+	return MmCopyMemory(mapped_phys, copy_addr, write_size, MM_COPY_MEMORY_VIRTUAL, bytes_read);
+}
+#pragma warning(pop)
+
 NTSTATUS Memory::store_process_context(_In_ WCHAR* proc_name, _In_ ULONG proc_name_size) { //doing it with PsGetNextProcess could have been a better solution
 
 	static UNICODE_STRING func_name = RTL_CONSTANT_STRING(L"ZwQuerySystemInformation");
@@ -216,6 +234,10 @@ NTSTATUS Memory::read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T read_size,
 	return this->read_physical_memory(page + page_offset, read_size, buffer, bytes_read);
 } //todo: test case 2mb page and 1gb page + should probably lock pages into phys mem to avoid issues with ram intensive games
 
+
+NTSTATUS write_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T write_size, _Out_ PVOID buffer, _Out_ PSIZE_T bytes_written) {
+	
+}
 
 #pragma warning(push)
 #pragma warning(disable:6001)

@@ -96,23 +96,31 @@ public:
 
 	NTSTATUS query_virtual_memory_in_um(_In_ DWORD64 base_addr, _Out_ PVOID memory_info, _In_ SIZE_T memory_info_length);
 
-	/*wrapper for physical read with MmCopyMemory
+	/*
+	  wrapper for physical read with MmCopyMemory
 	  note: buffer has to be in non paged memory
 	*/
-	NTSTATUS read_physical_memory(_In_ DWORD64 physical_addr, _In_ SIZE_T read_size, _Out_ PVOID buffer, _Out_ SIZE_T* bytes_read);
+	NTSTATUS read_physical_memory(_In_ DWORD64 physical_addr, _In_ SIZE_T read_size, _Out_ PVOID buffer, _Out_ PSIZE_T bytes_read);
 
+	/*
+	 Writes to physical memory with MmMapIoSpace and MmCopyMemory
+	*/
+	NTSTATUS write_physical_memory(_In_ DWORD64 physical_addr, _In_ SIZE_T write_size, _Out_ PVOID buffer, _Out_ PSIZE_T bytes_read);
 	/*
 	the buffer(for now) comes from the SystemBuffer attributed by the io manager
 	the buffer should also be in kernel memory (not in context of ioctl user thread)
 	*/
-	NTSTATUS read_memory(_In_ DWORD64 addr, _In_ SIZE_T size, _Out_ PVOID buffer, _In_ SIZE_T buffer_size, _Out_ SIZE_T* bytes_read);
+	
+	NTSTATUS translate_virtual_to_physical(_In_ DWORD64 virtual_addr, _Out_ PLONGLONG physical_addr, _Out_ SIZE_T physical_page_size);
+	
+	NTSTATUS read_memory(_In_ DWORD64 addr, _In_ SIZE_T size, _Out_ PVOID buffer, _In_ SIZE_T buffer_size, _Out_ PSIZE_T bytes_read);
 
 	/*https://www.unknowncheats.me/forum/general-programming-and-reversing/523359-introduction-physical-memory.html translation process explained :)
 	  buffer has to be in non paged memory
 	  todo: find a way to read mem that has been paged out ? check way to get it from disk or just use MmProbeAndLockPages/Unlock
 	*/
 	//
-	NTSTATUS read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T size, _Out_ PVOID buffer, _Out_ SIZE_T* bytes_read);
+	NTSTATUS read_memory_2(_In_ DWORD64 virtual_addr, _In_ SIZE_T size, _Out_ PVOID buffer, _Out_ PSIZE_T bytes_read);
 
 	NTSTATUS allocate_virtual_memory_in_um(_In_ SIZE_T region_size, _In_ ULONG alloc_type, _In_ ULONG protect, _Out_ PVOID base_addr);
 
@@ -122,3 +130,6 @@ public:
 
 
 };
+
+
+//TODO: implement virtual_to_physical and finish communication
